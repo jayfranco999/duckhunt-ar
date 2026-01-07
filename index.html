@@ -496,7 +496,7 @@
             // Classic mode: no overlay
             if (state.mode === 'classic') return;
 
-            // Both challenge and dual modes: just glasses on face
+            // Both challenge and dual modes: pixel glasses on face
             if (!state.faceDetection) return;
 
             const w = arOverlay.width, h = arOverlay.height;
@@ -504,57 +504,49 @@
             const fx = (1 - face.xCenter) * w;
             const fy = face.yCenter * h;
             const faceW = face.width * w;
-            const faceH = face.height * h;
 
-            // Eye position
-            const eyeY = fy - faceH * 0.12;
-            const glassW = faceW * 0.58;
-            const glassH = faceH * 0.22;
-            const lensW = glassW * 0.42;
-            const lensH = glassH * 0.85;
+            // Position glasses on eyes (higher up on face)
+            const eyeY = fy - faceW * 0.18;
+            const p = faceW * 0.038; // pixel size based on face width
 
-            // Glasses frame - thick black frame
             arCtx.fillStyle = '#000';
-            arCtx.strokeStyle = '#000';
-            arCtx.lineWidth = 4;
 
+            // "Deal with it" pixel glasses pattern
+            // Left lens
+            arCtx.fillRect(fx - 12*p, eyeY - 2*p, 10*p, 5*p);
+            // Right lens
+            arCtx.fillRect(fx + 2*p, eyeY - 2*p, 10*p, 5*p);
             // Bridge
-            arCtx.fillRect(fx - glassW * 0.08, eyeY - lensH * 0.1, glassW * 0.16, lensH * 0.25);
+            arCtx.fillRect(fx - 2*p, eyeY - 1*p, 4*p, 2*p);
 
-            // Left lens frame
-            arCtx.beginPath();
-            arCtx.roundRect(fx - glassW * 0.52, eyeY - lensH * 0.5, lensW, lensH, 4);
-            arCtx.fill();
-            arCtx.stroke();
+            // Left temple (arm)
+            arCtx.fillRect(fx - 13*p, eyeY - 2*p, 2*p, 2*p);
+            arCtx.fillRect(fx - 15*p, eyeY - 1*p, 2*p, 2*p);
+            arCtx.fillRect(fx - 17*p, eyeY, 2*p, 2*p);
+            arCtx.fillRect(fx - 19*p, eyeY + 1*p, 4*p, 2*p);
 
-            // Right lens frame
-            arCtx.beginPath();
-            arCtx.roundRect(fx + glassW * 0.1, eyeY - lensH * 0.5, lensW, lensH, 4);
-            arCtx.fill();
-            arCtx.stroke();
+            // Right temple (arm)
+            arCtx.fillRect(fx + 11*p, eyeY - 2*p, 2*p, 2*p);
+            arCtx.fillRect(fx + 13*p, eyeY - 1*p, 2*p, 2*p);
+            arCtx.fillRect(fx + 15*p, eyeY, 2*p, 2*p);
+            arCtx.fillRect(fx + 17*p, eyeY + 1*p, 4*p, 2*p);
 
-            // Temples (arms going to ears)
-            arCtx.fillRect(fx - glassW * 0.55, eyeY - lensH * 0.2, -faceW * 0.25, lensH * 0.15);
-            arCtx.fillRect(fx + glassW * 0.52, eyeY - lensH * 0.2, faceW * 0.25, lensH * 0.15);
-
-            // Lens tint - dark with slight color
-            const lensColor = state.mode === 'dual' ? 'rgba(50, 80, 50, 0.85)' : 'rgba(40, 40, 80, 0.85)';
-            arCtx.fillStyle = lensColor;
-            arCtx.beginPath();
-            arCtx.roundRect(fx - glassW * 0.5, eyeY - lensH * 0.45, lensW - 4, lensH - 6, 3);
-            arCtx.fill();
-            arCtx.beginPath();
-            arCtx.roundRect(fx + glassW * 0.12, eyeY - lensH * 0.45, lensW - 4, lensH - 6, 3);
-            arCtx.fill();
-
-            // Lens shine
-            arCtx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-            arCtx.beginPath();
-            arCtx.ellipse(fx - glassW * 0.38, eyeY - lensH * 0.25, lensW * 0.15, lensH * 0.2, -0.3, 0, Math.PI * 2);
-            arCtx.fill();
-            arCtx.beginPath();
-            arCtx.ellipse(fx + glassW * 0.24, eyeY - lensH * 0.25, lensW * 0.15, lensH * 0.2, -0.3, 0, Math.PI * 2);
-            arCtx.fill();
+            // White pixel reflections on lenses
+            arCtx.fillStyle = '#FFF';
+            // Left lens reflection
+            arCtx.fillRect(fx - 11*p, eyeY - 1*p, p, p);
+            arCtx.fillRect(fx - 10*p, eyeY - 1*p, p, p);
+            arCtx.fillRect(fx - 11*p, eyeY, p, p);
+            arCtx.fillRect(fx - 8*p, eyeY + 1*p, p, p);
+            arCtx.fillRect(fx - 7*p, eyeY + 1*p, p, p);
+            arCtx.fillRect(fx - 5*p, eyeY + 1*p, p, p);
+            // Right lens reflection
+            arCtx.fillRect(fx + 3*p, eyeY - 1*p, p, p);
+            arCtx.fillRect(fx + 4*p, eyeY - 1*p, p, p);
+            arCtx.fillRect(fx + 3*p, eyeY, p, p);
+            arCtx.fillRect(fx + 6*p, eyeY + 1*p, p, p);
+            arCtx.fillRect(fx + 7*p, eyeY + 1*p, p, p);
+            arCtx.fillRect(fx + 9*p, eyeY + 1*p, p, p);
         }
 
         // ============ UI ============
