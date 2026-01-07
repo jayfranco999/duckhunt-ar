@@ -47,20 +47,13 @@
         .mode-btn .mode-title { color: #63C74D; margin-bottom: 8px; }
         .mode-btn .mode-desc { font-size: 8px; color: #888; line-height: 1.4; }
 
-        .tutorial-container { margin: 20px 0 10px 0; display: flex; align-items: center; gap: 20px; }
-        .hand-tutorial { position: relative; width: 140px; height: 120px; }
-        .hand-tutorial svg { width: 100%; height: 100%; }
-        .thumb-animate { animation: thumbTuck 2s ease-in-out infinite; transform-origin: 58px 14px; }
-        @keyframes thumbTuck {
-            0%, 40% { transform: rotate(0deg); }
-            50%, 70% { transform: rotate(40deg); }
-            80%, 100% { transform: rotate(0deg); }
-        }
-        .shoot-flash { position: absolute; top: 30px; left: -12px; width: 30px; height: 30px; background: radial-gradient(circle, #FFF 0%, #FFD700 40%, transparent 70%); border-radius: 50%; opacity: 0; animation: flashPulse 2s ease-in-out infinite; }
-        @keyframes flashPulse {
-            0%, 45% { opacity: 0; transform: scale(0.5); }
-            50%, 55% { opacity: 1; transform: scale(1.2); }
-            60%, 100% { opacity: 0; transform: scale(0.5); }
+        .tutorial-container { margin: 20px 0 10px 0; display: flex; align-items: center; gap: 30px; }
+        .hand-tutorial { position: relative; font-size: 80px; line-height: 1; }
+        .hand-emoji { display: inline-block; }
+        .tuck-arrow { position: absolute; top: -5px; left: 50px; font-size: 24px; color: #E85A30; animation: arrowBounce 1.5s ease-in-out infinite; }
+        @keyframes arrowBounce {
+            0%, 100% { transform: translateY(0) rotate(-45deg); opacity: 1; }
+            50% { transform: translateY(12px) rotate(-45deg); opacity: 0.6; }
         }
         .tutorial-text { font-size: 9px; color: #000; line-height: 1.6; text-align: left; }
         .tutorial-text .step { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
@@ -98,23 +91,8 @@
 
             <div class="tutorial-container">
                 <div class="hand-tutorial">
-                    <svg viewBox="0 0 100 80">
-                        <!-- Brown cuff -->
-                        <rect x="72" y="25" width="28" height="35" fill="#8B4513" stroke="#000" stroke-width="2"/>
-                        <!-- Palm (main hand body) -->
-                        <path d="M72 25 Q72 15, 55 18 L55 60 Q72 65, 72 60 Z" fill="#FFDBAC" stroke="#000" stroke-width="2"/>
-                        <!-- Curled fingers (bottom bumps) -->
-                        <ellipse cx="48" cy="58" rx="12" ry="8" fill="#FFDBAC" stroke="#000" stroke-width="2"/>
-                        <ellipse cx="35" cy="55" rx="10" ry="7" fill="#FFDBAC" stroke="#000" stroke-width="2"/>
-                        <ellipse cx="25" cy="50" rx="8" ry="6" fill="#FFDBAC" stroke="#000" stroke-width="2"/>
-                        <!-- Index finger pointing left -->
-                        <rect x="0" y="22" width="58" height="14" rx="7" fill="#FFDBAC" stroke="#000" stroke-width="2"/>
-                        <!-- Thumb (animated) -->
-                        <g class="thumb-animate">
-                            <rect x="25" y="8" width="35" height="12" rx="6" fill="#FFDBAC" stroke="#000" stroke-width="2"/>
-                        </g>
-                    </svg>
-                    <div class="shoot-flash"></div>
+                    <span class="hand-emoji">👈</span>
+                    <span class="tuck-arrow">↓</span>
                 </div>
                 <div class="tutorial-text">
                     <div class="step"><span class="num">1</span> Point index finger</div>
