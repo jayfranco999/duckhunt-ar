@@ -159,7 +159,7 @@
         // ============ STATE ============
         const state = {
             mode: 'classic', // 'classic', 'challenge', 'dual'
-            running: false, score: 0, shots: 0, hits: 0, combo: 0,
+            running: false, score: 0, shots: 0, hits: 0, combo: 0, frameCount: 0,
             ducks: [],
             // Hand tracking
             hands: [
@@ -599,36 +599,45 @@
             hand.crosshair.x += (hand.target.x - hand.crosshair.x) * config.smoothing;
             hand.crosshair.y += (hand.target.y - hand.crosshair.y) * config.smoothing;
 
-            // Hit animation timer
+            // Hit animation
             if (hand.hitAnim === undefined) hand.hitAnim = 0;
-            if (hand.hitAnim > 0) hand.hitAnim--;
+            const isHit = hand.hitAnim > 0;
+            if (isHit) hand.hitAnim -= 0.06;
 
             const x = Math.round(hand.crosshair.x);
             const y = Math.round(hand.crosshair.y);
-            const isHit = hand.hitAnim > 0;
-            const r = 20;
+            const baseR = 20;
+            const r = isHit ? baseR + (hand.hitAnim * 30) : baseR;
             const currentColor = isHit ? '#FF3366' : color;
 
-            // Black outline
+            // Expanding ring on hit
+            if (isHit) {
+                ctx.strokeStyle = '#FF3366';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(x, y, r + 10, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Main crosshair
             ctx.strokeStyle = C.black;
             ctx.lineWidth = 5;
             ctx.beginPath();
-            ctx.arc(x, y, r, 0, Math.PI * 2);
-            ctx.moveTo(x - r - 12, y); ctx.lineTo(x - 6, y);
-            ctx.moveTo(x + 6, y); ctx.lineTo(x + r + 12, y);
-            ctx.moveTo(x, y - r - 12); ctx.lineTo(x, y - 6);
-            ctx.moveTo(x, y + 6); ctx.lineTo(x, y + r + 12);
+            ctx.arc(x, y, baseR, 0, Math.PI * 2);
+            ctx.moveTo(x - baseR - 12, y); ctx.lineTo(x - 6, y);
+            ctx.moveTo(x + 6, y); ctx.lineTo(x + baseR + 12, y);
+            ctx.moveTo(x, y - baseR - 12); ctx.lineTo(x, y - 6);
+            ctx.moveTo(x, y + 6); ctx.lineTo(x, y + baseR + 12);
             ctx.stroke();
 
-            // Colored crosshair
             ctx.strokeStyle = currentColor;
             ctx.lineWidth = 3;
             ctx.beginPath();
-            ctx.arc(x, y, r, 0, Math.PI * 2);
-            ctx.moveTo(x - r - 10, y); ctx.lineTo(x - 6, y);
-            ctx.moveTo(x + 6, y); ctx.lineTo(x + r + 10, y);
-            ctx.moveTo(x, y - r - 10); ctx.lineTo(x, y - 6);
-            ctx.moveTo(x, y + 6); ctx.lineTo(x, y + r + 10);
+            ctx.arc(x, y, baseR, 0, Math.PI * 2);
+            ctx.moveTo(x - baseR - 10, y); ctx.lineTo(x - 6, y);
+            ctx.moveTo(x + 6, y); ctx.lineTo(x + baseR + 10, y);
+            ctx.moveTo(x, y - baseR - 10); ctx.lineTo(x, y - 6);
+            ctx.moveTo(x, y + 6); ctx.lineTo(x, y + baseR + 10);
             ctx.stroke();
 
             // Center dot
@@ -653,7 +662,7 @@
                 const dist = Math.hypot(d.x - hand.crosshair.x, d.y - hand.crosshair.y);
                 if (dist < config.hitbox + d.size/2) {
                     hit = true;
-                    hand.hitAnim = 15; // Trigger crosshair hit animation (frames)
+                    hand.hitAnim = 1; // Trigger crosshair hit animation
                     state.hits++;
                     state.combo++;
                     state.score += d.points * Math.min(state.combo, 5);
@@ -752,6 +761,7 @@
 
         function gameLoop() {
             if (!state.running) return;
+            state.frameCount++;
 
             // Update timer for dual mode
             if (state.mode === 'dual') {
@@ -783,7 +793,8 @@
                 drawCrosshair(0);
             }
 
-            if (state.mode !== 'classic') drawAROverlay();
+            // Throttle AR overlay to every 3rd frame for performance
+            if (state.mode !== 'classic' && state.frameCount % 3 === 0) drawAROverlay();
 
             // Check end conditions
             const targetDucks = state.mode === 'classic' ? 10 : state.mode === 'challenge' ? 15 : Infinity;
@@ -913,8 +924,8 @@
                 const cam = new Camera(video, {
                     onFrame: async () => {
                         await hands.send({ image: video });
-                        // Run face detection in challenge and dual modes for glasses overlay
-                        if (state.mode === 'challenge' || state.mode === 'dual') {
+                        // Run face detection less frequently to save performance
+                        if ((state.mode === 'challenge' || state.mode === 'dual') && Math.random() < 0.2) {
                             await faceDetection.send({ image: video });
                         }
                     },
