@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Duck Hunt AR</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; overflow: hidden; font-family: 'Press Start 2P', monospace; }
+        #game-container { position: relative; width: 100vw; height: 100vh; cursor: none; }
+        #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+        #webcam { position: absolute; opacity: 0; pointer-events: none; }
+
+        #webcam-preview {
+            position: absolute;
+            background: #000;
+            z-index: 100;
+            overflow: hidden;
+            border: 6px solid #000;
+            outline: 4px solid #63C74D;
+            transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #webcam-preview.center { top: 50%; left: 50%; transform: translate(-50%, -50%); width: 640px; height: 480px; }
+        #webcam-preview.corner { width: 280px; height: 210px; transition: none; }
+        #webcam-preview.corner-static { top: 15px; right: 15px; left: auto; transform: none; width: 280px; height: 210px; }
+        #webcam-preview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        #ar-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+
+        #start-screen, #stats-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #63C74D; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 200; cursor: auto !important;
+        }
+        #stats-screen { display: none; background: #000; }
+
+        .title { font-size: 48px; color: #E85A30; text-shadow: 4px 4px #000; margin-bottom: 10px; }
+        .subtitle { font-size: 14px; color: #FFF; text-shadow: 2px 2px #000; margin-bottom: 30px; }
+        .instruction { font-size: 10px; color: #000; margin: 6px 0; background: #FFF; padding: 8px 15px; }
+
+        .mode-buttons { display: flex; gap: 15px; margin-top: 30px; flex-wrap: wrap; justify-content: center; }
+        .mode-btn {
+            padding: 20px 25px; font-family: 'Press Start 2P', monospace; font-size: 11px;
+            background: #1B1B3A; color: #FFF; border: 4px solid #000; cursor: pointer !important;
+            text-shadow: 2px 2px #000; min-width: 180px; text-align: center;
+        }
+        .mode-btn:hover { background: #2B2B5A; }
+        .mode-btn .mode-title { color: #63C74D; margin-bottom: 8px; }
+        .mode-btn .mode-desc { font-size: 8px; color: #888; line-height: 1.4; }
+
+        .tutorial-container { margin: 20px 0 10px 0; display: flex; align-items: center; gap: 20px; }
+        .hand-tutorial { position: relative; width: 120px; height: 140px; }
+        .hand-tutorial svg { width: 100%; height: 100%; }
+        .thumb-animate { animation: thumbTuck 2s ease-in-out infinite; transform-origin: 85px 95px; }
+        @keyframes thumbTuck {
+            0%, 40% { transform: rotate(0deg); }
+            50%, 70% { transform: rotate(-35deg); }
+            80%, 100% { transform: rotate(0deg); }
+        }
+        .shoot-flash { position: absolute; top: 10px; left: 65px; width: 30px; height: 30px; background: radial-gradient(circle, #FFF 0%, #FFD700 40%, transparent 70%); border-radius: 50%; opacity: 0; animation: flashPulse 2s ease-in-out infinite; }
+        @keyframes flashPulse {
+            0%, 45% { opacity: 0; transform: scale(0.5); }
+            50%, 55% { opacity: 1; transform: scale(1.2); }
+            60%, 100% { opacity: 0; transform: scale(0.5); }
+        }
+        .tutorial-text { font-size: 9px; color: #000; line-height: 1.6; text-align: left; }
+        .tutorial-text .step { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+        .tutorial-text .num { background: #1B1B3A; color: #63C74D; padding: 2px 8px; font-size: 8px; }
+
+        #restart-btn {
+            margin-top: 40px; padding: 15px 40px; font-family: 'Press Start 2P', monospace;
+            font-size: 14px; background: #E85A30; color: #FFF; border: 4px solid #000;
+            cursor: pointer !important; text-shadow: 2px 2px #000;
+        }
+        #restart-btn:hover { background: #FF7043; }
+
+        .stat-box { background: #1B1B3A; border: 4px solid #63C74D; padding: 30px 50px; margin-bottom: 20px; }
+        .stat-line { font-size: 12px; color: #FFF; margin: 10px 0; }
+        .stat-value { color: #63C74D; }
+        .roast-text { font-size: 10px; color: #E85A30; margin-top: 15px; max-width: 400px; text-align: center; line-height: 1.6; }
+
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 14px; color: #FFF; z-index: 300; background: #000; padding: 30px 50px; border: 4px solid #63C74D; }
+        .hidden { display: none !important; }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <video id="webcam" autoplay playsinline></video>
+        <div id="webcam-preview" class="center">
+            <video id="preview-video" autoplay playsinline muted></video>
+            <canvas id="ar-overlay"></canvas>
+        </div>
+
+        <div id="start-screen">
+            <div class="title">DUCK HUNT</div>
+            <div class="subtitle">AR EDITION</div>
+
+            <div class="tutorial-container">
+                <div class="hand-tutorial">
+                    <svg viewBox="0 0 120 140">
+                        <!-- Palm -->
+                        <rect x="55" y="70" width="45" height="55" rx="8" fill="#D2B48C" stroke="#8B4513" stroke-width="2"/>
+                        <!-- Index finger pointing up -->
+                        <rect x="70" y="10" width="16" height="65" rx="6" fill="#D2B48C" stroke="#8B4513" stroke-width="2"/>
+                        <!-- Middle finger (tucked) -->
+                        <rect x="52" y="45" width="14" height="30" rx="5" fill="#C4A882" stroke="#8B4513" stroke-width="2"/>
+                        <!-- Ring finger (tucked) -->
+                        <rect x="38" y="50" width="13" height="25" rx="5" fill="#C4A882" stroke="#8B4513" stroke-width="2"/>
+                        <!-- Pinky (tucked) -->
+                        <rect x="26" y="58" width="12" height="20" rx="5" fill="#C4A882" stroke="#8B4513" stroke-width="2"/>
+                        <!-- Thumb (animated) -->
+                        <g class="thumb-animate">
+                            <rect x="88" y="65" width="22" height="14" rx="5" fill="#D2B48C" stroke="#8B4513" stroke-width="2"/>
+                        </g>
+                        <!-- Wrist -->
+                        <rect x="58" y="120" width="38" height="18" rx="3" fill="#D2B48C" stroke="#8B4513" stroke-width="2"/>
+                    </svg>
+                    <div class="shoot-flash"></div>
+                </div>
+                <div class="tutorial-text">
+                    <div class="step"><span class="num">1</span> Point index finger</div>
+                    <div class="step"><span class="num">2</span> Tuck thumb to shoot</div>
+                    <div class="step"><span class="num">3</span> Release to reload</div>
+                </div>
+            </div>
+
+            <div class="mode-buttons">
+                <button class="mode-btn" data-mode="classic">
+                    <div class="mode-title">CLASSIC</div>
+                    <div class="mode-desc">10 ducks<br>No frills</div>
+                </button>
+                <button class="mode-btn" data-mode="challenge">
+                    <div class="mode-title">CHALLENGE</div>
+                    <div class="mode-desc">Moving cam<br>Crazy ducks</div>
+                </button>
+                <button class="mode-btn" data-mode="dual">
+                    <div class="mode-title">DUAL PISTOL</div>
+                    <div class="mode-desc">2 hands<br>Zombie wave</div>
+                </button>
+            </div>
+        </div>
+
+        <div id="stats-screen">
+            <div class="stat-box">
+                <div class="title" style="font-size: 20px; margin-bottom: 25px; color: #63C74D;">GAME OVER</div>
+                <p class="stat-line">HIT: <span class="stat-value" id="final-hits">0</span></p>
+                <p class="stat-line">SHOTS: <span class="stat-value" id="final-shots">0</span></p>
+                <p class="stat-line">ACCURACY: <span class="stat-value" id="final-accuracy">0%</span></p>
+                <p class="stat-line">SCORE: <span class="stat-value" id="final-score">0</span></p>
+            </div>
+            <p class="roast-text" id="roast-text"></p>
+            <button id="restart-btn">MENU</button>
+        </div>
+
+        <div id="loading">LOADING...</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const video = document.getElementById('webcam');
+        const previewVideo = document.getElementById('preview-video');
+        const arOverlay = document.getElementById('ar-overlay');
+        const arCtx = arOverlay.getContext('2d');
+        const webcamPreview = document.getElementById('webcam-preview');
+
+        let W, H;
+        function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+        resize();
+        window.addEventListener('resize', resize);
+
+        const C = {
+            sky: '#9BDBFF', grass: '#63C74D', grassDark: '#3E8948', tree: '#1B1B3A',
+            ground: '#D07020', black: '#000000', white: '#FFFFFF', orange: '#E85A30',
+            brown: '#8B4513', tan: '#D2B48C', pink: '#FFB6C1', red: '#CC3333', purple: '#8844AA'
+        };
+
+        // ============ STATE ============
+        const state = {
+            mode: 'classic', // 'classic', 'challenge', 'dual'
+            running: false, score: 0, shots: 0, hits: 0, combo: 0,
+            ducks: [],
+            // Hand tracking
+            hands: [
+                { visible: false, landmarks: null, crosshair: {x: W/3, y: H/2}, target: {x: W/3, y: H/2}, canShoot: true },
+                { visible: false, landmarks: null, crosshair: {x: 2*W/3, y: H/2}, target: {x: 2*W/3, y: H/2}, canShoot: true }
+            ],
+            faceDetection: null,
+            lastShot: [0, 0], flash: 0, gunRecoil: [0, 0],
+            // Dog
+            dogState: 'idle', dogTimer: 0, dogFrame: 0,
+            // Challenge mode
+            camX: W - 295, camY: 15, camVX: 2, camVY: 1.5,
+            // Dual mode
+            timeLeft: 60, zombiesKilled: 0
+        };
+
+        const config = { cooldown: 300, hitbox: 55, smoothing: 0.12 };
+
+        // ============ TRIGGER DETECTION ============
+        function checkTrigger(handIndex) {
+            const hand = state.hands[handIndex];
+            if (!hand.visible || !hand.landmarks) return false;
+
+            const lm = hand.landmarks;
+            const thumbTip = lm[4];
+            const thumbIP = lm[3];
+            const indexMCP = lm[5];
+            const wrist = lm[0];
+
+            // Method 1: Thumb tip below thumb IP joint (vertical tuck)
+            const thumbDown = thumbTip.y > thumbIP.y + 0.02;
+
+            // Method 2: Thumb tip close to index base (horizontal tuck)
+            const thumbToIndex = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y);
+            const thumbNearPalm = thumbToIndex < 0.1;
+
+            // Stability check: thumb position shouldn't jump wildly between frames
+            const prevThumbX = hand.prevThumbX || thumbTip.x;
+            const prevThumbY = hand.prevThumbY || thumbTip.y;
+            const thumbJump = Math.hypot(thumbTip.x - prevThumbX, thumbTip.y - prevThumbY);
+            hand.prevThumbX = thumbTip.x;
+            hand.prevThumbY = thumbTip.y;
+
+            // If thumb jumped too far, it's likely occluded - ignore this frame
+            if (thumbJump > 0.15) {
+                return false;
+            }
+
+            const tucked = thumbDown || thumbNearPalm;
+
+            if (tucked && hand.canShoot) {
+                hand.canShoot = false;
+                return true;
+            }
+
+            // Reset when thumb is clearly extended
+            if (!tucked) {
+                hand.canShoot = true;
+            }
+
+            return false;
+        }
+
+        // ============ BACKGROUND ============
+        function drawBackground() {
+            ctx.fillStyle = state.mode === 'dual' ? '#2a1a3a' : C.sky;
+            ctx.fillRect(0, 0, W, H);
+            const groundY = H * 0.78;
+            ctx.fillStyle = state.mode === 'dual' ? '#1a0a2a' : C.ground;
+            ctx.fillRect(0, groundY, W, H * 0.04);
+            ctx.fillStyle = state.mode === 'dual' ? '#3E8948' : C.grass;
+            ctx.fillRect(0, groundY + H * 0.04, W, H * 0.18);
+            ctx.fillStyle = C.grassDark;
+            ctx.fillRect(0, H * 0.92, W, H * 0.08);
+            drawTree(W * 0.08, groundY);
+            drawBush(W * 0.4, groundY + 10);
+            drawBush(W * 0.6, groundY + 5);
+            drawSmallTree(W * 0.88, groundY);
+        }
+
+        function drawTree(x, groundY) {
+            const treeH = H * 0.55;
+            ctx.fillStyle = C.tree;
+            ctx.fillRect(x - W * 0.015, groundY - treeH * 0.35, W * 0.03, treeH * 0.35);
+            ctx.beginPath();
+            ctx.moveTo(x - W * 0.08, groundY - treeH * 0.35);
+            ctx.lineTo(x, groundY - treeH);
+            ctx.lineTo(x + W * 0.08, groundY - treeH * 0.35);
+            ctx.fill();
+        }
+
+        function drawSmallTree(x, groundY) {
+            const treeH = H * 0.35;
+            ctx.fillStyle = C.tree;
+            ctx.fillRect(x - W * 0.01, groundY - treeH * 0.3, W * 0.02, treeH * 0.3);
+            ctx.beginPath();
+            ctx.moveTo(x - W * 0.05, groundY - treeH * 0.3);
+            ctx.lineTo(x, groundY - treeH);
+            ctx.lineTo(x + W * 0.05, groundY - treeH * 0.3);
+            ctx.fill();
+        }
+
+        function drawBush(x, y) {
+            ctx.fillStyle = C.grassDark;
+            ctx.fillRect(x - 30, y - 35, 60, 35);
+            ctx.fillStyle = C.grass;
+            ctx.fillRect(x - 25, y - 35, 50, 20);
+        }
+
+        // ============ DOG ============
+        function setDogState(newState, duration = 90) {
+            state.dogState = newState;
+            state.dogTimer = duration;
+            state.dogFrame = 0;
+        }
+
+        const dogLines = {
+            idle: ['...', '*stares*'], miss: ['LMAOOO', 'BRUH', 'skill issue', 'L + ratio'],
+            hit: ['ok', 'lucky', 'meh'], combo: ['wait what', 'SHEESH', 'hol up'],
+            escape: ['LMAO bye', 'free bird'], start: ['dont choke', 'lets see'],
+            zombie: ['ZOMBIES', 'oh no', 'RIP']
+        };
+        let currentLine = '', lineTimer = 0;
+
+        function setDogLine(cat) {
+            currentLine = dogLines[cat][Math.floor(Math.random() * dogLines[cat].length)];
+            lineTimer = 100;
+        }
+
+        function drawDog() {
+            if (state.mode === 'dual') return; // No dog in dual mode
+            const dx = 20, dy = H - 240, scale = 2.2;
+            ctx.save();
+            ctx.translate(dx, dy);
+            ctx.scale(scale, scale);
+            state.dogFrame++;
+            const bounce = state.dogState === 'laugh' ? Math.sin(state.dogFrame * 0.4) * 4 : 0;
+            ctx.translate(state.dogState === 'laugh' ? Math.sin(state.dogFrame * 0.6) * 3 : 0, bounce);
+
+            // Body
+            ctx.fillStyle = C.brown;
+            ctx.beginPath(); ctx.ellipse(50, 80, 35, 30, 0, 0, Math.PI * 2); ctx.fill();
+            // Head
+            ctx.fillStyle = C.tan;
+            ctx.beginPath(); ctx.ellipse(50, 30, 40, 35, 0, 0, Math.PI * 2); ctx.fill();
+            // Ears
+            ctx.fillStyle = C.brown;
+            const earFlop = state.dogState === 'laugh' ? Math.sin(state.dogFrame * 0.5) * 8 : 0;
+            ctx.beginPath(); ctx.ellipse(15, 20 + earFlop, 15, 25, -0.4, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(85, 20 - earFlop, 15, 25, 0.4, 0, Math.PI * 2); ctx.fill();
+            // Eyes
+            ctx.fillStyle = C.white;
+            ctx.beginPath(); ctx.ellipse(35, 25, 12, 14, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(65, 23, 14, 16, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = C.black;
+            if (state.dogState === 'laugh') {
+                ctx.fillRect(28, 23, 16, 5); ctx.fillRect(58, 21, 18, 5);
+            } else {
+                ctx.beginPath(); ctx.arc(37, 27, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(67, 25, 6, 0, Math.PI * 2); ctx.fill();
+            }
+            // Snout + nose
+            ctx.fillStyle = C.tan;
+            ctx.beginPath(); ctx.ellipse(50, 50, 18, 15, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = C.black;
+            ctx.beginPath(); ctx.ellipse(50, 44, 10, 8, 0, 0, Math.PI * 2); ctx.fill();
+            // Mouth
+            ctx.strokeStyle = C.black; ctx.lineWidth = 3;
+            if (state.dogState === 'laugh') {
+                ctx.fillStyle = '#8B0000';
+                ctx.beginPath(); ctx.ellipse(50, 62, 15, 12, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = C.pink;
+                ctx.beginPath(); ctx.ellipse(50, 70, 8, 10, 0, 0, Math.PI); ctx.fill();
+            } else {
+                ctx.beginPath(); ctx.moveTo(35, 58); ctx.quadraticCurveTo(50, 68, 65, 55); ctx.stroke();
+            }
+            ctx.restore();
+
+            if (state.dogTimer > 0) { state.dogTimer--; if (state.dogTimer === 0) state.dogState = 'idle'; }
+
+            // Speech bubble
+            if (lineTimer > 0) {
+                lineTimer--;
+                ctx.font = '16px "Press Start 2P", monospace';
+                const tw = ctx.measureText(currentLine).width;
+                ctx.fillStyle = C.white;
+                ctx.fillRect(240, H - 200, tw + 30, 50);
+                ctx.strokeStyle = C.black; ctx.lineWidth = 4;
+                ctx.strokeRect(240, H - 200, tw + 30, 50);
+                ctx.fillStyle = C.black;
+                ctx.fillText(currentLine, 255, H - 168);
+            }
+        }
+
+        // ============ DUCK CLASSES ============
+        class Duck {
+            constructor(type = 'normal') {
+                this.type = type;
+                this.size = 50;
+                this.frame = 0;
+                this.frameTimer = 0;
+                const fromLeft = Math.random() > 0.5;
+                this.x = fromLeft ? -this.size : W + this.size;
+                this.y = 100 + Math.random() * (H * 0.4);
+                const speed = type === 'drunk' ? 2 + Math.random() : 3.5 + Math.random() * 2;
+                this.vx = fromLeft ? speed : -speed;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.alive = true;
+                this.onScreen = false;
+                this.life = 0;
+                this.teleportTimer = type === 'teleporter' ? 60 + Math.random() * 40 : 0;
+                this.points = type === 'normal' ? 100 : type === 'drunk' ? 150 : 300;
+                this.color = type === 'normal' ? C.grass : type === 'drunk' ? C.purple : C.orange;
+            }
+
+            update() {
+                this.life++;
+                this.frameTimer++;
+                if (this.frameTimer > 6) { this.frame = 1 - this.frame; this.frameTimer = 0; }
+
+                if (this.type === 'drunk') {
+                    // Wobble unpredictably
+                    this.vx += (Math.random() - 0.5) * 0.5;
+                    this.vy += (Math.random() - 0.5) * 0.8;
+                    this.vx = Math.max(-4, Math.min(4, this.vx));
+                    this.vy = Math.max(-3, Math.min(3, this.vy));
+                } else if (this.type === 'teleporter') {
+                    this.teleportTimer--;
+                    if (this.teleportTimer <= 0) {
+                        this.x = 100 + Math.random() * (W - 500);
+                        this.y = 100 + Math.random() * (H * 0.4);
+                        this.teleportTimer = 50 + Math.random() * 30;
+                    }
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.type === 'normal') this.y += Math.sin(this.life * 0.08) * 0.5;
+
+                if (this.y < 60) { this.y = 60; this.vy = Math.abs(this.vy); }
+                if (this.y > H * 0.55) { this.y = H * 0.55; this.vy = -Math.abs(this.vy); }
+                if (this.x > 50 && this.x < W - 380) this.onScreen = true;
+
+                if ((this.onScreen && (this.x < -this.size * 2 || this.x > W + this.size * 2)) || this.life > 400) {
+                    this.alive = false;
+                    if (this.life > 400 && state.mode !== 'dual') { setDogState('laugh', 120); setDogLine('escape'); }
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                if (this.vx < 0) ctx.scale(-1, 1);
+                const s = 4;
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-6*s, -2*s, 12*s, 8*s);
+                ctx.fillRect(4*s, -6*s, 6*s, 6*s);
+                ctx.fillStyle = C.orange;
+                ctx.fillRect(9*s, -4*s, 4*s, 3*s);
+                ctx.fillStyle = C.white;
+                ctx.fillRect(6*s, -5*s, 3*s, 3*s);
+                ctx.fillStyle = this.type === 'teleporter' ? C.orange : C.black;
+                ctx.fillRect(7*s, -4*s, 2*s, 2*s);
+                ctx.fillStyle = this.type === 'drunk' ? '#6622AA' : C.grassDark;
+                if (this.frame === 0) ctx.fillRect(-4*s, -6*s, 8*s, 4*s);
+                else ctx.fillRect(-4*s, 4*s, 8*s, 4*s);
+                ctx.fillStyle = C.white;
+                ctx.fillRect(-4*s, 2*s, 8*s, 4*s);
+
+                // Teleporter glow
+                if (this.type === 'teleporter' && this.teleportTimer < 20) {
+                    ctx.strokeStyle = C.orange;
+                    ctx.lineWidth = 3;
+                    ctx.globalAlpha = 0.5 + Math.sin(this.life * 0.5) * 0.3;
+                    ctx.strokeRect(-8*s, -8*s, 16*s, 16*s);
+                    ctx.globalAlpha = 1;
+                }
+                ctx.restore();
+            }
+        }
+
+        class ZombieDuck extends Duck {
+            constructor() {
+                super('normal');
+                this.color = '#556B2F';
+                this.points = 50;
+                this.size = 45;
+                const speed = 2 + Math.random() * 3;
+                this.vx = this.x < W/2 ? speed : -speed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                if (this.vx < 0) ctx.scale(-1, 1);
+                const s = 3.5;
+                // Zombie green body
+                ctx.fillStyle = '#556B2F';
+                ctx.fillRect(-6*s, -2*s, 12*s, 8*s);
+                ctx.fillRect(4*s, -6*s, 6*s, 6*s);
+                // Dead eyes
+                ctx.fillStyle = '#FF0000';
+                ctx.fillRect(6*s, -5*s, 3*s, 3*s);
+                ctx.fillStyle = '#000';
+                ctx.fillRect(7*s, -4*s, 1*s, 1*s);
+                // Wings
+                ctx.fillStyle = '#3D4F2F';
+                if (this.frame === 0) ctx.fillRect(-4*s, -6*s, 8*s, 4*s);
+                else ctx.fillRect(-4*s, 4*s, 8*s, 4*s);
+                ctx.restore();
+            }
+        }
+
+        // ============ AR OVERLAY ============
+        function drawAROverlay() {
+            const rect = webcamPreview.getBoundingClientRect();
+            arOverlay.width = rect.width;
+            arOverlay.height = rect.height;
+            arCtx.clearRect(0, 0, arOverlay.width, arOverlay.height);
+
+            // Classic mode: no overlay
+            if (state.mode === 'classic') return;
+
+            // Both challenge and dual modes: just glasses on face
+            if (!state.faceDetection) return;
+
+            const w = arOverlay.width, h = arOverlay.height;
+            const face = state.faceDetection;
+            const fx = (1 - face.xCenter) * w;
+            const fy = face.yCenter * h;
+            const faceW = face.width * w;
+            const faceH = face.height * h;
+
+            // Eye position
+            const eyeY = fy - faceH * 0.12;
+            const glassW = faceW * 0.58;
+            const glassH = faceH * 0.22;
+            const lensW = glassW * 0.42;
+            const lensH = glassH * 0.85;
+
+            // Glasses frame - thick black frame
+            arCtx.fillStyle = '#000';
+            arCtx.strokeStyle = '#000';
+            arCtx.lineWidth = 4;
+
+            // Bridge
+            arCtx.fillRect(fx - glassW * 0.08, eyeY - lensH * 0.1, glassW * 0.16, lensH * 0.25);
+
+            // Left lens frame
+            arCtx.beginPath();
+            arCtx.roundRect(fx - glassW * 0.52, eyeY - lensH * 0.5, lensW, lensH, 4);
+            arCtx.fill();
+            arCtx.stroke();
+
+            // Right lens frame
+            arCtx.beginPath();
+            arCtx.roundRect(fx + glassW * 0.1, eyeY - lensH * 0.5, lensW, lensH, 4);
+            arCtx.fill();
+            arCtx.stroke();
+
+            // Temples (arms going to ears)
+            arCtx.fillRect(fx - glassW * 0.55, eyeY - lensH * 0.2, -faceW * 0.25, lensH * 0.15);
+            arCtx.fillRect(fx + glassW * 0.52, eyeY - lensH * 0.2, faceW * 0.25, lensH * 0.15);
+
+            // Lens tint - dark with slight color
+            const lensColor = state.mode === 'dual' ? 'rgba(50, 80, 50, 0.85)' : 'rgba(40, 40, 80, 0.85)';
+            arCtx.fillStyle = lensColor;
+            arCtx.beginPath();
+            arCtx.roundRect(fx - glassW * 0.5, eyeY - lensH * 0.45, lensW - 4, lensH - 6, 3);
+            arCtx.fill();
+            arCtx.beginPath();
+            arCtx.roundRect(fx + glassW * 0.12, eyeY - lensH * 0.45, lensW - 4, lensH - 6, 3);
+            arCtx.fill();
+
+            // Lens shine
+            arCtx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            arCtx.beginPath();
+            arCtx.ellipse(fx - glassW * 0.38, eyeY - lensH * 0.25, lensW * 0.15, lensH * 0.2, -0.3, 0, Math.PI * 2);
+            arCtx.fill();
+            arCtx.beginPath();
+            arCtx.ellipse(fx + glassW * 0.24, eyeY - lensH * 0.25, lensW * 0.15, lensH * 0.2, -0.3, 0, Math.PI * 2);
+            arCtx.fill();
+        }
+
+        // ============ UI ============
+        function drawUI() {
+            // Score
+            ctx.fillStyle = C.black;
+            ctx.fillRect(0, H - 55, 220, 55);
+            ctx.font = '10px "Press Start 2P", monospace';
+            ctx.fillStyle = C.white;
+            ctx.fillText('SCORE', 15, H - 38);
+            ctx.fillStyle = C.grass;
+            ctx.font = '16px "Press Start 2P", monospace';
+            ctx.fillText(state.score.toString().padStart(6, '0'), 15, H - 15);
+
+            if (state.combo >= 2) {
+                ctx.fillStyle = C.orange;
+                ctx.font = '14px "Press Start 2P", monospace';
+                ctx.fillText(state.combo + 'x COMBO', 15, H - 60);
+            }
+
+            // Mode-specific UI
+            if (state.mode === 'dual') {
+                // Timer
+                ctx.fillStyle = C.black;
+                ctx.fillRect(W/2 - 80, 10, 160, 50);
+                ctx.font = '10px "Press Start 2P", monospace';
+                ctx.fillStyle = C.white;
+                ctx.textAlign = 'center';
+                ctx.fillText('TIME', W/2, 28);
+                ctx.font = '20px "Press Start 2P", monospace';
+                ctx.fillStyle = state.timeLeft < 10 ? C.orange : C.grass;
+                ctx.fillText(Math.ceil(state.timeLeft).toString(), W/2, 52);
+                ctx.textAlign = 'left';
+
+                // Zombies killed
+                ctx.fillStyle = C.black;
+                ctx.fillRect(W - 180, H - 55, 180, 55);
+                ctx.font = '10px "Press Start 2P", monospace';
+                ctx.fillStyle = C.white;
+                ctx.fillText('KILLS', W - 165, H - 38);
+                ctx.fillStyle = C.red;
+                ctx.font = '16px "Press Start 2P", monospace';
+                ctx.fillText(state.zombiesKilled.toString(), W - 165, H - 15);
+            } else {
+                // Ducks remaining
+                ctx.fillStyle = C.black;
+                ctx.fillRect(W/2 - 70, 10, 140, 45);
+                ctx.font = '8px "Press Start 2P", monospace';
+                ctx.fillStyle = C.white;
+                ctx.textAlign = 'center';
+                ctx.fillText('DUCKS', W/2, 30);
+                ctx.font = '16px "Press Start 2P", monospace';
+                ctx.fillStyle = C.orange;
+                const remaining = state.mode === 'challenge' ? 15 - state.hits : 10 - state.hits;
+                ctx.fillText(Math.max(0, remaining).toString(), W/2, 48);
+                ctx.textAlign = 'left';
+            }
+
+            // Flash
+            if (state.flash > 0) {
+                ctx.fillStyle = `rgba(255,255,255,${state.flash})`;
+                ctx.fillRect(0, 0, W, H);
+                state.flash -= 0.08;
+            }
+        }
+
+        // ============ CROSSHAIR ============
+        function drawCrosshair(handIndex, color = C.orange) {
+            const hand = state.hands[handIndex];
+            if (!hand.visible) return;
+
+            hand.crosshair.x += (hand.target.x - hand.crosshair.x) * config.smoothing;
+            hand.crosshair.y += (hand.target.y - hand.crosshair.y) * config.smoothing;
+
+            const x = hand.crosshair.x, y = hand.crosshair.y, r = 18;
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(x - r - 12, y); ctx.lineTo(x - r + 6, y);
+            ctx.moveTo(x + r - 6, y); ctx.lineTo(x + r + 12, y);
+            ctx.moveTo(x, y - r - 12); ctx.lineTo(x, y - r + 6);
+            ctx.moveTo(x, y + r - 6); ctx.lineTo(x, y + r + 12);
+            ctx.stroke();
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = C.black;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // ============ SHOOTING ============
+        function shoot(handIndex) {
+            const now = Date.now();
+            if (now - state.lastShot[handIndex] < config.cooldown) return;
+            state.lastShot[handIndex] = now;
+            state.shots++;
+            state.flash = 0.3;
+            state.gunRecoil[handIndex] = 5;
+
+            const hand = state.hands[handIndex];
+            let hit = false;
+
+            for (let i = state.ducks.length - 1; i >= 0; i--) {
+                const d = state.ducks[i];
+                const dist = Math.hypot(d.x - hand.crosshair.x, d.y - hand.crosshair.y);
+                if (dist < config.hitbox + d.size/2) {
+                    hit = true;
+                    state.hits++;
+                    state.combo++;
+                    state.score += d.points * Math.min(state.combo, 5);
+                    if (state.mode === 'dual') state.zombiesKilled++;
+                    if (state.combo >= 3 && state.mode !== 'dual') { setDogState('impressed', 90); setDogLine('combo'); }
+                    else if (state.mode !== 'dual') setDogLine('hit');
+                    state.ducks.splice(i, 1);
+                    break;
+                }
+            }
+
+            if (!hit) {
+                state.combo = 0;
+                if (state.mode !== 'dual') {
+                    setDogState('laugh', 100);
+                    setDogLine('miss');
+                }
+            }
+        }
+
+        // ============ MEDIAPIPE ============
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.4
+        });
+
+        const faceDetection = new FaceDetection({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}` });
+        faceDetection.setOptions({ model: 'short', minDetectionConfidence: 0.5 });
+        faceDetection.onResults(results => {
+            if (results.detections && results.detections.length > 0) {
+                state.faceDetection = results.detections[0].boundingBox;
+            } else {
+                state.faceDetection = null;
+            }
+        });
+
+        hands.onResults(results => {
+            // Reset visibility
+            state.hands[0].visible = false;
+            state.hands[1].visible = false;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                for (let i = 0; i < results.multiHandLandmarks.length && i < 2; i++) {
+                    const lm = results.multiHandLandmarks[i];
+                    const handIndex = state.mode === 'dual' ? i : 0;
+                    const hand = state.hands[handIndex];
+
+                    hand.landmarks = lm;
+                    hand.visible = true;
+                    const indexTip = lm[8];
+                    hand.target.x = (1 - indexTip.x) * W;
+                    hand.target.y = indexTip.y * H;
+
+                    if (state.running && checkTrigger(handIndex)) {
+                        shoot(handIndex);
+                    }
+                }
+            }
+        });
+
+        // ============ WEBCAM MOVEMENT (Challenge mode) ============
+        function updateWebcamPosition() {
+            if (state.mode !== 'challenge') return;
+
+            const camW = 280, camH = 210, margin = 10;
+            const maxX = W - camW - margin;
+            const maxY = H - camH - margin - 60;
+
+            state.camX += state.camVX;
+            state.camY += state.camVY;
+
+            if (state.camX <= margin || state.camX >= maxX) {
+                state.camVX *= -1;
+                state.camX = Math.max(margin, Math.min(maxX, state.camX));
+                // Speed up but CAP IT
+                const speed = Math.abs(state.camVX) * 1.03;
+                state.camVX = Math.sign(state.camVX) * Math.min(speed, 6);
+                state.camVY = Math.sign(state.camVY) * Math.min(Math.abs(state.camVY) * 1.03, 5);
+            }
+            if (state.camY <= margin || state.camY >= maxY) {
+                state.camVY *= -1;
+                state.camY = Math.max(margin, Math.min(maxY, state.camY));
+            }
+
+            webcamPreview.style.left = state.camX + 'px';
+            webcamPreview.style.top = state.camY + 'px';
+            webcamPreview.style.right = 'auto';
+            webcamPreview.style.transform = 'none';
+        }
+
+        // ============ GAME LOOP ============
+        let spawnTimer, spawned = 0, gameStartTime = 0;
+
+        function gameLoop() {
+            if (!state.running) return;
+
+            // Update timer for dual mode
+            if (state.mode === 'dual') {
+                state.timeLeft = 60 - (Date.now() - gameStartTime) / 1000;
+                if (state.timeLeft <= 0) {
+                    endGame();
+                    return;
+                }
+            }
+
+            if (state.mode === 'challenge') updateWebcamPosition();
+
+            drawBackground();
+
+            for (let i = state.ducks.length - 1; i >= 0; i--) {
+                state.ducks[i].update();
+                if (!state.ducks[i].alive) { state.ducks.splice(i, 1); continue; }
+                state.ducks[i].draw();
+            }
+
+            drawDog();
+            drawUI();
+
+            // Draw crosshairs
+            if (state.mode === 'dual') {
+                drawCrosshair(0, C.orange);
+                drawCrosshair(1, '#44AAFF');
+            } else {
+                drawCrosshair(0);
+            }
+
+            if (state.mode !== 'classic') drawAROverlay();
+
+            // Check end conditions
+            const targetDucks = state.mode === 'classic' ? 10 : state.mode === 'challenge' ? 15 : Infinity;
+            if (state.mode !== 'dual' && (state.hits >= targetDucks || (spawned >= targetDucks && state.ducks.length === 0))) {
+                endGame();
+                return;
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function spawnDuck() {
+            const targetDucks = state.mode === 'classic' ? 10 : state.mode === 'challenge' ? 15 : Infinity;
+            if (state.mode !== 'dual' && spawned >= targetDucks) return;
+
+            if (state.mode === 'classic') {
+                state.ducks.push(new Duck('normal'));
+            } else if (state.mode === 'challenge') {
+                const r = Math.random();
+                if (r < 0.4) state.ducks.push(new Duck('normal'));
+                else if (r < 0.7) state.ducks.push(new Duck('drunk'));
+                else state.ducks.push(new Duck('teleporter'));
+            } else if (state.mode === 'dual') {
+                // Spawn zombies - limit total on screen
+                if (state.ducks.length < 8) {
+                    const count = Math.min(2 + Math.floor(spawned / 8), 4);
+                    for (let i = 0; i < count; i++) {
+                        setTimeout(() => {
+                            if (state.ducks.length < 10) state.ducks.push(new ZombieDuck());
+                        }, i * 300);
+                    }
+                }
+            }
+
+            spawned++;
+            if (state.mode !== 'dual' && Math.random() < 0.2 && lineTimer <= 0) setDogState('point', 60);
+        }
+
+        function startGame(mode) {
+            state.mode = mode;
+            webcamPreview.classList.remove('center');
+
+            if (mode === 'challenge') {
+                webcamPreview.classList.add('corner');
+            } else {
+                webcamPreview.classList.add('corner-static');
+            }
+
+            setTimeout(() => {
+                state.running = true;
+                state.score = 0;
+                state.shots = 0;
+                state.hits = 0;
+                state.combo = 0;
+                state.ducks = [];
+                state.zombiesKilled = 0;
+                state.timeLeft = 60;
+                gameStartTime = Date.now();
+                spawned = 0;
+
+                // Reset hands
+                state.hands.forEach(h => {
+                    h.canShoot = true;
+                    h.thumbDist = 1;
+                    h.thumbDistPrev = 1;
+                });
+
+                // Reset webcam position for challenge mode
+                state.camX = W - 295;
+                state.camY = 15;
+                state.camVX = 2 * (Math.random() > 0.5 ? 1 : -1);
+                state.camVY = 1.5 * (Math.random() > 0.5 ? 1 : -1);
+
+                document.getElementById('start-screen').style.display = 'none';
+                document.getElementById('stats-screen').style.display = 'none';
+
+                if (mode === 'dual') {
+                    setDogLine('zombie');
+                } else {
+                    setDogLine('start');
+                }
+
+                spawnDuck();
+                const spawnRate = mode === 'classic' ? 2500 : mode === 'challenge' ? 2000 : 1500;
+                spawnTimer = setInterval(spawnDuck, spawnRate);
+                gameLoop();
+            }, 800);
+        }
+
+        const roasts = {
+            bad: ["the ducks won", "aim.exe crashed", "impressive failure"],
+            ok: ["aggressively mid", "participation trophy"],
+            good: ["ok i see you", "decent"],
+            great: ["duck menace", "built different"]
+        };
+
+        function endGame() {
+            state.running = false;
+            clearInterval(spawnTimer);
+
+            webcamPreview.style.left = '';
+            webcamPreview.style.top = '';
+            webcamPreview.style.right = '';
+            webcamPreview.style.transform = '';
+            webcamPreview.classList.remove('corner', 'corner-static');
+            webcamPreview.classList.add('center');
+
+            const acc = state.shots > 0 ? Math.round((state.hits / state.shots) * 100) : 0;
+            let cat = acc < 30 ? 'bad' : acc < 50 ? 'ok' : acc < 75 ? 'good' : 'great';
+
+            document.getElementById('final-hits').textContent = state.mode === 'dual' ? state.zombiesKilled : state.hits;
+            document.getElementById('final-shots').textContent = state.shots;
+            document.getElementById('final-accuracy').textContent = acc + '%';
+            document.getElementById('final-score').textContent = state.score;
+            document.getElementById('roast-text').textContent = roasts[cat][Math.floor(Math.random() * roasts[cat].length)];
+            document.getElementById('stats-screen').style.display = 'flex';
+        }
+
+        async function setup() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'user' } });
+                video.srcObject = stream;
+                previewVideo.srcObject = stream;
+                await new Promise(r => { video.onloadedmetadata = () => { video.play(); r(); }; });
+                previewVideo.play();
+
+                const cam = new Camera(video, {
+                    onFrame: async () => {
+                        await hands.send({ image: video });
+                        // Run face detection in challenge and dual modes for glasses overlay
+                        if (state.mode === 'challenge' || state.mode === 'dual') {
+                            await faceDetection.send({ image: video });
+                        }
+                    },
+                    width: 1280, height: 720
+                });
+                await cam.start();
+                document.getElementById('loading').classList.add('hidden');
+            } catch (e) {
+                document.getElementById('loading').textContent = 'CAMERA ERROR';
+            }
+        }
+
+        // Event listeners
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => startGame(btn.dataset.mode));
+        });
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            document.getElementById('stats-screen').style.display = 'none';
+            document.getElementById('start-screen').style.display = 'flex';
+        });
+
+        setup();
+    </script>
+</body>
+</html>
