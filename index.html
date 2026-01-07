@@ -8,7 +8,7 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000; overflow: hidden; font-family: 'Press Start 2P', monospace; }
         #game-container { position: relative; width: 100vw; height: 100vh; cursor: none; }
-        #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+        #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; image-rendering: pixelated; will-change: contents; }
         #webcam { position: absolute; opacity: 0; pointer-events: none; }
 
         #webcam-preview {
@@ -19,9 +19,10 @@
             border: 6px solid #000;
             outline: 4px solid #63C74D;
             transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            will-change: transform;
         }
         #webcam-preview.center { top: 50%; left: 50%; transform: translate(-50%, -50%); width: 640px; height: 480px; }
-        #webcam-preview.corner { width: 280px; height: 210px; transition: none; }
+        #webcam-preview.corner { top: 0; left: 0; width: 280px; height: 210px; transition: none; }
         #webcam-preview.corner-static { top: 15px; right: 15px; left: auto; transform: none; width: 280px; height: 210px; }
         #webcam-preview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 
@@ -618,7 +619,7 @@
         // ============ MEDIAPIPE ============
         const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
         hands.setOptions({
-            maxNumHands: 1,
+            maxNumHands: 2,
             modelComplexity: 0,
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
@@ -662,7 +663,6 @@
             if (state.camX <= margin || state.camX >= maxX) {
                 state.camVX *= -1;
                 state.camX = Math.max(margin, Math.min(maxX, state.camX));
-                // Speed up but CAP IT
                 const speed = Math.abs(state.camVX) * 1.03;
                 state.camVX = Math.sign(state.camVX) * Math.min(speed, 6);
                 state.camVY = Math.sign(state.camVY) * Math.min(Math.abs(state.camVY) * 1.03, 5);
@@ -672,10 +672,8 @@
                 state.camY = Math.max(margin, Math.min(maxY, state.camY));
             }
 
-            webcamPreview.style.left = state.camX + 'px';
-            webcamPreview.style.top = state.camY + 'px';
-            webcamPreview.style.right = 'auto';
-            webcamPreview.style.transform = 'none';
+            // Use transform for GPU acceleration (no layout thrashing)
+            webcamPreview.style.transform = `translate3d(${state.camX}px, ${state.camY}px, 0)`;
         }
 
         // ============ GAME LOOP ============
