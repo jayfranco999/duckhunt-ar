@@ -793,8 +793,8 @@
                 drawCrosshair(0);
             }
 
-            // Throttle AR overlay to every 3rd frame for performance
-            if (state.mode !== 'classic' && state.frameCount % 3 === 0) drawAROverlay();
+            // AR overlay disabled for performance testing
+            // if (state.mode !== 'classic') drawAROverlay();
 
             // Check end conditions
             const targetDucks = state.mode === 'classic' ? 10 : state.mode === 'challenge' ? 15 : Infinity;
@@ -915,7 +915,7 @@
 
         async function setup() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'user' } });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
                 video.srcObject = stream;
                 previewVideo.srcObject = stream;
                 await new Promise(r => { video.onloadedmetadata = () => { video.play(); r(); }; });
@@ -924,12 +924,8 @@
                 const cam = new Camera(video, {
                     onFrame: async () => {
                         await hands.send({ image: video });
-                        // Run face detection less frequently to save performance
-                        if ((state.mode === 'challenge' || state.mode === 'dual') && Math.random() < 0.2) {
-                            await faceDetection.send({ image: video });
-                        }
                     },
-                    width: 1280, height: 720
+                    width: 640, height: 480
                 });
                 await cam.start();
                 document.getElementById('loading').classList.add('hidden');
