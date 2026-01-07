@@ -592,33 +592,63 @@
         }
 
         // ============ CROSSHAIR ============
-        function drawCrosshair(handIndex, color = C.orange) {
+        function drawCrosshair(handIndex, color = '#00FFAA') {
             const hand = state.hands[handIndex];
             if (!hand.visible) return;
 
             hand.crosshair.x += (hand.target.x - hand.crosshair.x) * config.smoothing;
             hand.crosshair.y += (hand.target.y - hand.crosshair.y) * config.smoothing;
 
+            // Initialize hit animation
+            if (hand.hitAnim === undefined) hand.hitAnim = 0;
+            if (hand.hitAnim > 0) hand.hitAnim -= 0.08;
+
             const x = hand.crosshair.x, y = hand.crosshair.y;
+            const isHit = hand.hitAnim > 0;
 
-            // Simple clean crosshair
-            ctx.strokeStyle = C.black;
-            ctx.lineWidth = 5;
-            ctx.beginPath();
-            ctx.moveTo(x - 20, y); ctx.lineTo(x + 20, y);
-            ctx.moveTo(x, y - 20); ctx.lineTo(x, y + 20);
-            ctx.stroke();
+            // Hit animation: expand radius and change color
+            const baseR = 18;
+            const r = isHit ? baseR + hand.hitAnim * 25 : baseR;
+            const currentColor = isHit ? '#FF3366' : color;
 
-            ctx.strokeStyle = color;
+            // Outer glow on hit
+            if (isHit) {
+                ctx.strokeStyle = '#FF3366';
+                ctx.lineWidth = 3;
+                ctx.globalAlpha = hand.hitAnim;
+                ctx.beginPath();
+                ctx.arc(x, y, r + 15, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+
+            // Main circle
+            ctx.strokeStyle = currentColor;
             ctx.lineWidth = 3;
             ctx.beginPath();
-            ctx.moveTo(x - 18, y); ctx.lineTo(x + 18, y);
-            ctx.moveTo(x, y - 18); ctx.lineTo(x, y + 18);
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Crosshair lines
+            ctx.beginPath();
+            ctx.moveTo(x - r - 10, y); ctx.lineTo(x - r + 5, y);
+            ctx.moveTo(x + r - 5, y); ctx.lineTo(x + r + 10, y);
+            ctx.moveTo(x, y - r - 10); ctx.lineTo(x, y - r + 5);
+            ctx.moveTo(x, y + r - 5); ctx.lineTo(x, y + r + 10);
             ctx.stroke();
 
             // Center dot
-            ctx.fillStyle = color;
-            ctx.fillRect(x - 3, y - 3, 6, 6);
+            ctx.fillStyle = currentColor;
+            ctx.beginPath();
+            ctx.arc(x, y, isHit ? 6 : 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Black outline
+            ctx.strokeStyle = C.black;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(x, y, r + 2, 0, Math.PI * 2);
+            ctx.stroke();
         }
 
         // ============ SHOOTING ============
@@ -638,6 +668,7 @@
                 const dist = Math.hypot(d.x - hand.crosshair.x, d.y - hand.crosshair.y);
                 if (dist < config.hitbox + d.size/2) {
                     hit = true;
+                    hand.hitAnim = 1; // Trigger crosshair hit animation
                     state.hits++;
                     state.combo++;
                     state.score += d.points * Math.min(state.combo, 5);
@@ -761,8 +792,8 @@
 
             // Draw crosshairs
             if (state.mode === 'dual') {
-                drawCrosshair(0, C.orange);
-                drawCrosshair(1, '#44AAFF');
+                drawCrosshair(0, '#00FFAA');
+                drawCrosshair(1, '#FF66AA');
             } else {
                 drawCrosshair(0);
             }
