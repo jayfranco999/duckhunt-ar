@@ -186,50 +186,29 @@
             const lm = hand.landmarks;
             const thumbTip = lm[4];
             const indexMCP = lm[5];
-            const middleMCP = lm[9];
 
-            // Measure thumb distance to palm center (between index and middle base)
-            const palmX = (indexMCP.x + middleMCP.x) / 2;
-            const palmY = (indexMCP.y + middleMCP.y) / 2;
-            const thumbDist = Math.hypot(thumbTip.x - palmX, thumbTip.y - palmY);
+            // Simple: thumb Y position relative to index base
+            // When thumb drops below index base = tucked
+            const thumbBelowIndex = thumbTip.y > indexMCP.y + 0.03;
 
-            // Initialize tracking
-            if (hand.thumbDistHistory === undefined) {
-                hand.thumbDistHistory = [];
-                hand.thumbState = 'neutral'; // 'neutral', 'cocked', 'fired'
+            // Also check horizontal tuck (thumb moves toward palm)
+            const thumbToIndex = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y);
+            const thumbClose = thumbToIndex < 0.12;
+
+            const isTucked = thumbBelowIndex || thumbClose;
+
+            // Initialize state
+            if (hand.wasTucked === undefined) hand.wasTucked = false;
+
+            // Fire on transition from NOT tucked to tucked
+            if (isTucked && !hand.wasTucked) {
+                hand.wasTucked = true;
+                return true;
             }
 
-            // Track distance history (last 5 frames)
-            hand.thumbDistHistory.push(thumbDist);
-            if (hand.thumbDistHistory.length > 5) hand.thumbDistHistory.shift();
-
-            // Need enough history
-            if (hand.thumbDistHistory.length < 3) return false;
-
-            // Calculate velocity (change in distance)
-            const oldDist = hand.thumbDistHistory[0];
-            const newDist = hand.thumbDistHistory[hand.thumbDistHistory.length - 1];
-            const velocity = oldDist - newDist; // positive = thumb moving IN toward palm
-
-            // Thresholds
-            const COCKED_DIST = 0.12;    // Thumb must be this far out to be "cocked"
-            const TUCKED_DIST = 0.07;    // Thumb must be this close to fire
-            const MIN_VELOCITY = 0.015;  // Must be moving inward this fast
-
-            // State machine
-            if (hand.thumbState === 'neutral' || hand.thumbState === 'fired') {
-                // Need thumb extended to cock
-                if (thumbDist > COCKED_DIST) {
-                    hand.thumbState = 'cocked';
-                }
-            } else if (hand.thumbState === 'cocked') {
-                // Check for deliberate tuck: close enough AND moving inward
-                if (thumbDist < TUCKED_DIST && velocity > MIN_VELOCITY) {
-                    hand.thumbState = 'fired';
-                    return true;
-                }
-                // If thumb drifts out more, stay cocked
-                // If thumb slowly drifts in without velocity, don't fire
+            // Reset when clearly untucked
+            if (!isTucked) {
+                hand.wasTucked = false;
             }
 
             return false;
