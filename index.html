@@ -185,30 +185,52 @@
 
             const lm = hand.landmarks;
             const thumbTip = lm[4];
+            const indexTip = lm[8];
             const indexMCP = lm[5];
-
-            // Simple: thumb Y position relative to index base
-            // When thumb drops below index base = tucked
-            const thumbBelowIndex = thumbTip.y > indexMCP.y + 0.03;
-
-            // Also check horizontal tuck (thumb moves toward palm)
-            const thumbToIndex = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y);
-            const thumbClose = thumbToIndex < 0.12;
-
-            const isTucked = thumbBelowIndex || thumbClose;
+            const wrist = lm[0];
 
             // Initialize state
-            if (hand.wasTucked === undefined) hand.wasTucked = false;
-
-            // Fire on transition from NOT tucked to tucked
-            if (isTucked && !hand.wasTucked) {
-                hand.wasTucked = true;
-                return true;
+            if (hand.tuckedFrames === undefined) {
+                hand.tuckedFrames = 0;
+                hand.untuckedFrames = 0;
+                hand.hasFired = false;
+                hand.prevThumbY = thumbTip.y;
             }
 
-            // Reset when clearly untucked
-            if (!isTucked) {
-                hand.wasTucked = false;
+            // OCCLUSION CHECK: if thumb and index tips are very close, thumb is probably hidden
+            const thumbIndexDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+            if (thumbIndexDist < 0.05) {
+                // Likely occluded - don't change state, just wait
+                return false;
+            }
+
+            // STABILITY CHECK: if thumb jumps too much, ignore this frame
+            const thumbJump = Math.abs(thumbTip.y - hand.prevThumbY);
+            hand.prevThumbY = thumbTip.y;
+            if (thumbJump > 0.08) {
+                return false;
+            }
+
+            // Check if tucked: thumb tip below index MCP (tucked into palm)
+            const thumbBelowIndex = thumbTip.y > indexMCP.y + 0.04;
+
+            if (thumbBelowIndex) {
+                hand.tuckedFrames++;
+                hand.untuckedFrames = 0;
+
+                // Require 3 consecutive tucked frames to fire, and haven't fired yet
+                if (hand.tuckedFrames >= 3 && !hand.hasFired) {
+                    hand.hasFired = true;
+                    return true;
+                }
+            } else {
+                hand.untuckedFrames++;
+                hand.tuckedFrames = 0;
+
+                // Require 3 untucked frames to reset
+                if (hand.untuckedFrames >= 3) {
+                    hand.hasFired = false;
+                }
             }
 
             return false;
