@@ -185,52 +185,24 @@
 
             const lm = hand.landmarks;
             const thumbTip = lm[4];
-            const indexTip = lm[8];
+            const thumbIP = lm[3];
             const indexMCP = lm[5];
-            const wrist = lm[0];
 
-            // Initialize state
-            if (hand.tuckedFrames === undefined) {
-                hand.tuckedFrames = 0;
-                hand.untuckedFrames = 0;
-                hand.hasFired = false;
-                hand.prevThumbY = thumbTip.y;
+            // Thumb is tucked if it drops below the thumb IP joint
+            const thumbTucked = thumbTip.y > thumbIP.y + 0.02;
+
+            // Initialize
+            if (hand.wasTucked === undefined) hand.wasTucked = false;
+
+            // Fire on transition: not tucked -> tucked
+            if (thumbTucked && !hand.wasTucked) {
+                hand.wasTucked = true;
+                return true;
             }
 
-            // OCCLUSION CHECK: if thumb and index tips are very close, thumb is probably hidden
-            const thumbIndexDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
-            if (thumbIndexDist < 0.05) {
-                // Likely occluded - don't change state, just wait
-                return false;
-            }
-
-            // STABILITY CHECK: if thumb jumps too much, ignore this frame
-            const thumbJump = Math.abs(thumbTip.y - hand.prevThumbY);
-            hand.prevThumbY = thumbTip.y;
-            if (thumbJump > 0.08) {
-                return false;
-            }
-
-            // Check if tucked: thumb tip below index MCP (tucked into palm)
-            const thumbBelowIndex = thumbTip.y > indexMCP.y + 0.04;
-
-            if (thumbBelowIndex) {
-                hand.tuckedFrames++;
-                hand.untuckedFrames = 0;
-
-                // Require 3 consecutive tucked frames to fire, and haven't fired yet
-                if (hand.tuckedFrames >= 3 && !hand.hasFired) {
-                    hand.hasFired = true;
-                    return true;
-                }
-            } else {
-                hand.untuckedFrames++;
-                hand.tuckedFrames = 0;
-
-                // Require 3 untucked frames to reset
-                if (hand.untuckedFrames >= 3) {
-                    hand.hasFired = false;
-                }
+            // Reset when thumb extends back up
+            if (!thumbTucked) {
+                hand.wasTucked = false;
             }
 
             return false;
@@ -621,31 +593,26 @@
             hand.crosshair.x += (hand.target.x - hand.crosshair.x) * config.smoothing;
             hand.crosshair.y += (hand.target.y - hand.crosshair.y) * config.smoothing;
 
-            const x = hand.crosshair.x, y = hand.crosshair.y, r = 18;
+            const x = hand.crosshair.x, y = hand.crosshair.y;
+
+            // Simple clean crosshair
+            ctx.strokeStyle = C.black;
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(x - 20, y); ctx.lineTo(x + 20, y);
+            ctx.moveTo(x, y - 20); ctx.lineTo(x, y + 20);
+            ctx.stroke();
 
             ctx.strokeStyle = color;
-            ctx.lineWidth = 4;
+            ctx.lineWidth = 3;
             ctx.beginPath();
-            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.moveTo(x - 18, y); ctx.lineTo(x + 18, y);
+            ctx.moveTo(x, y - 18); ctx.lineTo(x, y + 18);
             ctx.stroke();
 
-            ctx.beginPath();
-            ctx.moveTo(x - r - 12, y); ctx.lineTo(x - r + 6, y);
-            ctx.moveTo(x + r - 6, y); ctx.lineTo(x + r + 12, y);
-            ctx.moveTo(x, y - r - 12); ctx.lineTo(x, y - r + 6);
-            ctx.moveTo(x, y + r - 6); ctx.lineTo(x, y + r + 12);
-            ctx.stroke();
-
+            // Center dot
             ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(x, y, 4, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.strokeStyle = C.black;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(x, y, r + 3, 0, Math.PI * 2);
-            ctx.stroke();
+            ctx.fillRect(x - 3, y - 3, 6, 6);
         }
 
         // ============ SHOOTING ============
@@ -654,7 +621,7 @@
             if (now - state.lastShot[handIndex] < config.cooldown) return;
             state.lastShot[handIndex] = now;
             state.shots++;
-            state.flash = 0.3;
+            state.flash = 0.15;
             state.gunRecoil[handIndex] = 5;
 
             const hand = state.hands[handIndex];
