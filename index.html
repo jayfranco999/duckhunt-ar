@@ -24,7 +24,6 @@
         #webcam-preview.corner { width: 280px; height: 210px; transition: none; }
         #webcam-preview.corner-static { top: 15px; right: 15px; left: auto; transform: none; width: 280px; height: 210px; }
         #webcam-preview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        #ar-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
 
         #start-screen, #stats-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -82,7 +81,6 @@
         <video id="webcam" autoplay playsinline></video>
         <div id="webcam-preview" class="center">
             <video id="preview-video" autoplay playsinline muted></video>
-            <canvas id="ar-overlay"></canvas>
         </div>
 
         <div id="start-screen">
@@ -133,7 +131,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 
     <script>
@@ -141,8 +138,6 @@
         const ctx = canvas.getContext('2d');
         const video = document.getElementById('webcam');
         const previewVideo = document.getElementById('preview-video');
-        const arOverlay = document.getElementById('ar-overlay');
-        const arCtx = arOverlay.getContext('2d');
         const webcamPreview = document.getElementById('webcam-preview');
 
         let W, H;
@@ -166,7 +161,6 @@
                 { visible: false, landmarks: null, crosshair: {x: W/3, y: H/2}, target: {x: W/3, y: H/2}, canShoot: true },
                 { visible: false, landmarks: null, crosshair: {x: 2*W/3, y: H/2}, target: {x: 2*W/3, y: H/2}, canShoot: true }
             ],
-            faceDetection: null,
             lastShot: [0, 0], flash: 0, gunRecoil: [0, 0],
             // Dog
             dogState: 'idle', dogTimer: 0, dogFrame: 0,
@@ -464,69 +458,7 @@
             }
         }
 
-        // ============ AR OVERLAY ============
-        function drawAROverlay() {
-            const rect = webcamPreview.getBoundingClientRect();
-            arOverlay.width = rect.width;
-            arOverlay.height = rect.height;
-            arCtx.clearRect(0, 0, arOverlay.width, arOverlay.height);
-
-            // Classic mode: no overlay
-            if (state.mode === 'classic') return;
-
-            // Both challenge and dual modes: pixel glasses on face
-            if (!state.faceDetection) return;
-
-            const w = arOverlay.width, h = arOverlay.height;
-            const face = state.faceDetection;
-            const fx = (1 - face.xCenter) * w;
-            const fy = face.yCenter * h;
-            const faceW = face.width * w;
-
-            // Position glasses on eyes (higher up on face)
-            const eyeY = fy - faceW * 0.18;
-            const p = faceW * 0.038; // pixel size based on face width
-
-            arCtx.fillStyle = '#000';
-
-            // "Deal with it" pixel glasses pattern
-            // Left lens
-            arCtx.fillRect(fx - 12*p, eyeY - 2*p, 10*p, 5*p);
-            // Right lens
-            arCtx.fillRect(fx + 2*p, eyeY - 2*p, 10*p, 5*p);
-            // Bridge
-            arCtx.fillRect(fx - 2*p, eyeY - 1*p, 4*p, 2*p);
-
-            // Left temple (arm)
-            arCtx.fillRect(fx - 13*p, eyeY - 2*p, 2*p, 2*p);
-            arCtx.fillRect(fx - 15*p, eyeY - 1*p, 2*p, 2*p);
-            arCtx.fillRect(fx - 17*p, eyeY, 2*p, 2*p);
-            arCtx.fillRect(fx - 19*p, eyeY + 1*p, 4*p, 2*p);
-
-            // Right temple (arm)
-            arCtx.fillRect(fx + 11*p, eyeY - 2*p, 2*p, 2*p);
-            arCtx.fillRect(fx + 13*p, eyeY - 1*p, 2*p, 2*p);
-            arCtx.fillRect(fx + 15*p, eyeY, 2*p, 2*p);
-            arCtx.fillRect(fx + 17*p, eyeY + 1*p, 4*p, 2*p);
-
-            // White pixel reflections on lenses
-            arCtx.fillStyle = '#FFF';
-            // Left lens reflection
-            arCtx.fillRect(fx - 11*p, eyeY - 1*p, p, p);
-            arCtx.fillRect(fx - 10*p, eyeY - 1*p, p, p);
-            arCtx.fillRect(fx - 11*p, eyeY, p, p);
-            arCtx.fillRect(fx - 8*p, eyeY + 1*p, p, p);
-            arCtx.fillRect(fx - 7*p, eyeY + 1*p, p, p);
-            arCtx.fillRect(fx - 5*p, eyeY + 1*p, p, p);
-            // Right lens reflection
-            arCtx.fillRect(fx + 3*p, eyeY - 1*p, p, p);
-            arCtx.fillRect(fx + 4*p, eyeY - 1*p, p, p);
-            arCtx.fillRect(fx + 3*p, eyeY, p, p);
-            arCtx.fillRect(fx + 6*p, eyeY + 1*p, p, p);
-            arCtx.fillRect(fx + 7*p, eyeY + 1*p, p, p);
-            arCtx.fillRect(fx + 9*p, eyeY + 1*p, p, p);
-        }
-
+        
         // ============ UI ============
         function drawUI() {
             // Score
@@ -686,20 +618,10 @@
         // ============ MEDIAPIPE ============
         const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
         hands.setOptions({
-            maxNumHands: 2,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.6,
-            minTrackingConfidence: 0.4
-        });
-
-        const faceDetection = new FaceDetection({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}` });
-        faceDetection.setOptions({ model: 'short', minDetectionConfidence: 0.5 });
-        faceDetection.onResults(results => {
-            if (results.detections && results.detections.length > 0) {
-                state.faceDetection = results.detections[0].boundingBox;
-            } else {
-                state.faceDetection = null;
-            }
+            maxNumHands: 1,
+            modelComplexity: 0,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
         });
 
         hands.onResults(results => {
@@ -793,9 +715,7 @@
                 drawCrosshair(0);
             }
 
-            // AR overlay disabled for performance testing
-            // if (state.mode !== 'classic') drawAROverlay();
-
+            
             // Check end conditions
             const targetDucks = state.mode === 'classic' ? 10 : state.mode === 'challenge' ? 15 : Infinity;
             if (state.mode !== 'dual' && (state.hits >= targetDucks || (spawned >= targetDucks && state.ducks.length === 0))) {
