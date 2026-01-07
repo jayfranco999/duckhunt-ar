@@ -188,20 +188,26 @@
             const thumbIP = lm[3];
             const indexMCP = lm[5];
 
-            // Thumb is tucked if it drops below the thumb IP joint
-            const thumbTucked = thumbTip.y > thumbIP.y + 0.02;
+            // Method 1: Thumb tip below thumb IP joint (vertical tuck)
+            const thumbDown = thumbTip.y > thumbIP.y + 0.02;
+
+            // Method 2: Thumb tip close to index base (horizontal tuck)
+            const thumbToIndex = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y);
+            const thumbNearPalm = thumbToIndex < 0.1;
+
+            const isTucked = thumbDown || thumbNearPalm;
 
             // Initialize
             if (hand.wasTucked === undefined) hand.wasTucked = false;
 
             // Fire on transition: not tucked -> tucked
-            if (thumbTucked && !hand.wasTucked) {
+            if (isTucked && !hand.wasTucked) {
                 hand.wasTucked = true;
                 return true;
             }
 
-            // Reset when thumb extends back up
-            if (!thumbTucked) {
+            // Reset when clearly untucked
+            if (!isTucked) {
                 hand.wasTucked = false;
             }
 
